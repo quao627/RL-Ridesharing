@@ -85,7 +85,7 @@ class Agent:
                     mask2[item,:] = - torch.zeros(self.num_cars)
                 else:
                     mask1[:,-item-1] = - torch.ones(self.num_passengers) * float("inf")
-                    mask2[:,-item-1] = - torch.ones(self.num_passengers)
+                    mask2[:,-item-1] = - torch.zeros(self.num_passengers)
             score_matrix_flattened = score_matrix.view(-1) * mask2.view(-1) + mask1.view(-1)
                         
             prob = F.softmax(score_matrix_flattened,dim=0)
@@ -209,8 +209,8 @@ class Agent:
         self.optimizer.zero_grad()
         loss.backward()
 
-        for param in self.policy_net.parameters():
-            param.grad.data.clamp_(-1, 1)
+        # for param in self.policy_net.parameters():
+        #    param.grad.data.clamp_(-1, 1)
         self.optimizer.step()
 
 
