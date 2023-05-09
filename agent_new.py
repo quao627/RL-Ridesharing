@@ -13,11 +13,12 @@ from newenvironment import *
 from gridmap import GridMap
 from algorithm import *
 from dqn import ReplayMemory, DQN
+from dqn import MatchingNetwork
 from q_mixer import QMixer
 import matplotlib.pyplot as plt
 import copy 
-
-
+from torch.distributions import Categorical
+torch.autograd.set_detect_anomaly(True)
 Transition = namedtuple('Transition',
                         ('state', 'action', 'reward'))
 
@@ -39,7 +40,6 @@ class Agent:
         self.eps_start = eps_start
         self.eps_end = eps_end
         self.eps_decay = eps_decay
-        self.replay_capacity = replay_capacity
         self.num_episodes = num_episodes
         self.steps_done = 0
         self.lr = lr
@@ -50,26 +50,15 @@ class Agent:
         self.episode_durations = []
         self.loss_history = []
         
-        self.memory = ReplayMemory(self.replay_capacity)
-        
         self.device = torch.device("cpu")#"cuda:0" if torch.cuda.is_available() else 
         print("Device being used:", self.device)
-        self.policy_net = DQN(self.input_size, self.output_size , self.hidden_size).to(self.device)
-        
+        # self.policy_net = MatchingNetwork(vehicle_dim, passenger_dim, self.hidden_dim).to(self.device)
+        self.policy_net = MatchingNetwork(2, 4, hidden_size).to(self.device)
         self.params = list(self.policy_net.parameters())
-
-        
-        if self.mode == "qmix":
-            self.mixer = QMixer(self.input_size, self.num_passengers, mix_hidden).to(self.device)
-            self.params += list(self.mixer.parameters())
-            
         
         if load_file:
             self.policy_net.load_state_dict(torch.load(load_file))
             self.policy_net.eval()
-            if self.mode == "qmix":
-                self.mixer.load_state_dict(torch.load("mixer_" + load_file))
-                self.mixer.eval()
             self.load_file = "Trained_" + load_file
             print("Checkpoint loaded")
         else:         
@@ -82,32 +71,41 @@ class Agent:
 
         
 
-    def select_action(self,state):
-        #Select action with epsilon greedy
-        sample = random.random()
-        
-        eps_threshold = self.eps_end + (self.eps_start - self.eps_end) * \
-            math.exp(-1. * self.steps_done / self.eps_decay)
-            
-        print(eps_threshold)
-
-        self.steps_done += 1
-        
-        if not self.training:
-            eps_threshold = 0.0
-
-        if sample > eps_threshold:
-            # Choose best action
-            with torch.no_grad():
-                
-                self.policy_net.eval() 
-                return self.policy_net(state).view(self.num_passengers, self.num_cars).max(1)[1].view(1,self.num_passengers)
-
-        else:
-            #Choose random action
-            return torch.tensor([[random.randrange(self.num_cars) for car in range(self.num_passengers)]], device=self.device, dtype=torch.long)
-
-            
+    def select_action(self, my_car_vec, my_passenger_vec, mode="sample"):
+        score_matrix = self.policy_net(my_car_vec.unsqueeze(0), my_passenger_vec.unsqueeze(0)) # num_passengers x num_cars 
+        action = [-1] * self.num_passengers
+        logprob = torch.zeros(self.num_passengers)
+        hisotry = set()
+        for i in range(min(self.num_passengers, self.num_cars)):
+            mask1 = torch.zeros(self.num_passengers, self.num_cars)
+            mask2 = torch.ones(self.num_passengers, self.num_cars)
+            for item in hisotry:
+                if item >= 0:
+                    mask1[item,:] = - torch.ones(self.num_cars) * float("inf")
+                    mask2[item,:] = - torch.zeros(self.num_cars)
+                else:
+                    mask1[:,-item-1] = - torch.ones(self.num_passengers) * float("inf")
+                    mask2[:,-item-1] = - torch.ones(self.num_passengers)
+            score_matrix_flattened = score_matrix.view(-1) * mask2.view(-1) + mask1.view(-1)
+                        
+            prob = F.softmax(score_matrix_flattened,dim=0)
+            if mode == "greedy":
+                tmp_idx = prob.argmax().item()
+            else:
+                m = Categorical(prob)
+                tmp_idx = m.sample().item()
+            pax_idx = tmp_idx // self.num_cars
+            car_idx = tmp_idx % self.num_cars
+            action[pax_idx] = car_idx
+            logprob[pax_idx] = torch.log(prob[tmp_idx])
+            hisotry.add(pax_idx)
+            hisotry.add(-car_idx-1)
+        # loss = logprob.sum()
+        # self.optimizer.zero_grad()
+        # loss.backward()
+        # self.optimizer.step()
+        # assert 1 == 0
+        return action, logprob  
 
     def random_action(self, state):
         return torch.tensor([[random.randrange(self.num_cars) for car in range(self.num_passengers)]], device=self.device, dtype=torch.long)
@@ -121,54 +119,58 @@ class Agent:
 
         # Encode information about cars
         cars_vec = np.zeros(2*len(cars))
+        my_cars_vec = np.zeros((len(cars), 2))
         
         for i, car in enumerate(cars):    
             cars_vec[2*i: 2*i + 2]  = [car.position[0], car.position[1]]
+            my_cars_vec[i] = [car.position[0], car.position[1]]
 
         # Encode information about passengers
         passengers_vec = np.zeros(4*len(passengers))
+        my_passengers_vec = np.zeros((len(passengers), 4))
         for i, passenger in enumerate(passengers):
             passengers_vec[4*i: 4*i + 4]  = [passenger.pick_up_point[0], passenger.pick_up_point[1],
                                              passenger.drop_off_point[0],passenger.drop_off_point[1]]
+            my_passengers_vec[i] = [passenger.pick_up_point[0], passenger.pick_up_point[1],
+                                    passenger.drop_off_point[0],passenger.drop_off_point[1]]
 
-        return torch.tensor(np.concatenate((cars_vec, passengers_vec)), device= self.device, dtype=torch.float).unsqueeze(0)
+        return torch.tensor(np.concatenate((cars_vec, passengers_vec)), device= self.device, dtype=torch.float).unsqueeze(0), \
+            torch.tensor(my_cars_vec, device= self.device, dtype=torch.float).unsqueeze(0), \
+            torch.tensor(my_passengers_vec, device= self.device, dtype=torch.float).unsqueeze(0)
     
     
     def train(self):
-        
-        duration_sum = 0.0
-        
+        self.policy_net.train()
+        batch_size = 16
         for episode in range(self.num_episodes):
-            
-            self.reset() 
-            #self.reset_orig_env()
-            rewards_list = []
+            actions = []
+            logprobs = []
+            rewards = []
+            for b in range(batch_size):
+                self.reset() 
+                #self.reset_orig_env()
 
-            state = self.get_state()  
+                state, my_cars_vec, my_passengers_vec = self.get_state()  
+                if self.mode == "ours":
+                    action, logprob = self.select_action(my_cars_vec[0], my_passengers_vec[0])
+                    actions.append(action)
+                    logprobs.append(logprob)
+                elif self.mode == "greedy":
+                    action = [self.algorithm.greedy_fcfs(self.grid_map)]
             
-            if self.mode == "dqn" or self.mode == "qmix":
-                action = self.select_action(state)
-            elif self.mode == "random":
-                action = self.random_action([state])
-            elif self.mode == "greedy":
-                action = [self.algorithm.greedy_fcfs(self.grid_map)]
-            
-            # action = shape(number of passengers, 1) (-1 if no car is assigned)
-            reward = self.env.step(action, self.mode)
-            print("Avg Reward: ", np.sum(reward))
-            
+                # action = shape(number of passengers, 1) (-1 if no car is assigned)
+                reward = self.env.step([action], self.mode)
+                # print(reward)
+                rewards.append(reward)
+            print("Avg Batch Reward: ", np.array(rewards).sum(axis=1).mean())
             if self.training:
-                self.memory.push(state, action, torch.tensor(reward, device = self.device, dtype=torch.float).unsqueeze(0))  
-                self.optimize_model()
-                
-                self.plot_durations(self.mode)
-                self.plot_loss_history(self.mode)
+                self.optimize_model(actions, logprobs, rewards)
+                # self.plot_durations(self.mode)
+                # self.plot_loss_history(self.mode)
              
                 
             if self.training and episode % self.num_save == 0:
                 torch.save(self.policy_net.state_dict(), "episode_" + str(episode) + "_" +self.load_file )
-                if self.mode == "qmix":
-                    torch.save(self.mixer.state_dict(), "mixer_episode_" + str(episode) + "_" +self.load_file)
                 print("Checkpoint saved")
                 
                     
@@ -177,8 +179,6 @@ class Agent:
            
         if self.training:
             torch.save(self.policy_net.state_dict(), self.load_file )
-            if self.mode == "qmix":
-                torch.save(self.mixer.state_dict(), "mixer_" + self.load_file)
             print("Checkpoint saved")
         
         print("Finished")  
@@ -198,41 +198,17 @@ class Agent:
         self.grid_map.init_zero_map_cost()
 
         
-    def optimize_model(self):
-        if len(self.memory) < self.batch_size:
-            return
-        
-        transitions = self.memory.sample(self.batch_size)
-        batch = Transition(*zip(*transitions))
-    
-        state_batch = torch.cat(batch.state)
-        action_batch = torch.cat(batch.action)
-        reward_batch = torch.cat(batch.reward)
-        
-        self.policy_net.train()
-        
-        state_action_values = self.policy_net(state_batch).view(self.batch_size, self.num_passengers, self.num_cars).gather(2,action_batch.unsqueeze(2)).squeeze()
-
-        # Compute the expected Q values
-        expected_state_action_values = reward_batch
-        
-
-        # Compute Huber loss
-        if self.mode == "dqn":
-            loss = F.smooth_l1_loss(state_action_values, expected_state_action_values)
-        elif self.mode == "qmix":
-            self.mixer.train()
-            chosen_action_qvals = self.mixer(state_action_values, state_batch)
-            loss = F.smooth_l1_loss(chosen_action_qvals, reward_batch.view(-1, 1, 1))
-            #loss = F.mse_loss(chosen_action_qvals, reward_batch.view(-1, 1, 1))
-
-
+    def optimize_model(self, actions, logprobs, rewards):
+        loss = torch.zeros(len(actions))
+        for batch in range(len(actions)):
+            loss[batch] = -(logprobs[batch] * torch.tensor(rewards[batch])).sum()
+        loss = loss.mean()
         self.loss_history.append(loss.item())
 
         # Optimize the model
         self.optimizer.zero_grad()
         loss.backward()
-        
+
         for param in self.policy_net.parameters():
             param.grad.data.clamp_(-1, 1)
         self.optimizer.step()
@@ -310,7 +286,7 @@ if __name__ == '__main__':
     # random 3386, 337.336, 17092
     load_file = None
     #greedy, random, dqn, qmix
-    agent = Agent(env, input_size, output_size, hidden_size, load_file = load_file, lr=0.001, mix_hidden = 64, batch_size=128, eps_decay = 20000, num_episodes=1000, mode = "greedy", training = True) # 50,000 episodes for full trains
+    agent = Agent(env, input_size, output_size, hidden_size, load_file = load_file, lr=0.001, mix_hidden = 64, batch_size=128, eps_decay = 20000, num_episodes=1000, mode = "ours", training = True) # 50,000 episodes for full trains
     agent.train()
 
     

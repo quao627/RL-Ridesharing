@@ -55,19 +55,19 @@ class GridMap:
                 # for up
                 p_up = (row-1, col)
                 if self.is_valid(p_up): 
-                    self.map_cost[(p, p_up)] = random.randint(1,9)
+                    self.map_cost[(p, p_up)] = 1 # random.randint(1,9)
                     self.network.add_edge(p, p_up, weight = self.map_cost[(p, p_up)])
                 p_right = (row, col+1)
                 if self.is_valid(p_right): 
-                    self.map_cost[(p, p_right)] = random.randint(1,9)
+                    self.map_cost[(p, p_right)] = 1 # random.randint(1,9)
                     self.network.add_edge(p, p_right, weight = self.map_cost[(p, p_right)])
                 p_down = (row+1, col)
                 if self.is_valid(p_down): 
-                    self.map_cost[(p, p_down)] = random.randint(1,9)
+                    self.map_cost[(p, p_down)] = 1 # random.randint(1,9)
                     self.network.add_edge(p, p_down, weight = self.map_cost[(p, p_down)])
                 p_left = (row, col-1)
                 if self.is_valid(p_left): 
-                    self.map_cost[(p, p_left)] = random.randint(1,9)
+                    self.map_cost[(p, p_left)] = 1 # random.randint(1,9)
                     self.network.add_edge(p, p_left, weight = self.map_cost[(p, p_left)])
 
         # path_cost_dict = floyd_warshall(self.network, weight='weight')
