@@ -9,6 +9,7 @@ import scipy.optimize
 from collections import namedtuple
 from itertools import count
 from environment import *
+from newenvironment import *
 from gridmap import GridMap
 from algorithm import *
 from dqn import ReplayMemory, DQN
@@ -22,7 +23,7 @@ Transition = namedtuple('Transition',
 
 class Agent:
     def __init__(self, env, input_size, output_size, hidden_size, mix_hidden = 32, batch_size = 128, lr = 0.001, gamma = .999, eps_start = 0.9, 
-                 eps_end = 0.05, eps_decay = 750,  replay_capacity = 10000, num_save = 200, num_episodes = 10000, mode="random", training = False, load_file = None):
+                 eps_end = 0.05, eps_decay = 750,  replay_capacity = 10000, num_save = 200, num_episodes = 10000, mode="greedy", training = False, load_file = None):
         self.env = env
         self.orig_env = copy.deepcopy(env)
         self.grid_map = env.grid_map
@@ -45,7 +46,7 @@ class Agent:
         self.mode = mode
         self.num_save = num_save
         self.training = training
-        self.algorithm = PairAlgorithm()
+        self.algorithm = NewPairAlgorithm()
         self.episode_durations = []
         self.loss_history = []
         
@@ -141,7 +142,8 @@ class Agent:
             
             self.reset() 
             #self.reset_orig_env()
-            
+            rewards_list = []
+
             state = self.get_state()  
             
             if self.mode == "dqn" or self.mode == "qmix":
@@ -151,11 +153,9 @@ class Agent:
             elif self.mode == "greedy":
                 action = [self.algorithm.greedy_fcfs(self.grid_map)]
             
-            
-            reward, duration = self.env.step(action, self.mode)
-            
-            self.episode_durations.append(duration)
-            duration_sum += duration
+            # action = shape(number of passengers, ) (-1 if no car is assigned)
+            reward = self.env.step(action, self.mode)
+            print("Avg Reward: ", np.sum(reward))
             
             if self.training:
                 self.memory.push(state, action, torch.tensor(reward, device = self.device, dtype=torch.float).unsqueeze(0))  
@@ -180,8 +180,7 @@ class Agent:
             if self.mode == "qmix":
                 torch.save(self.mixer.state_dict(), "mixer_" + self.load_file)
             print("Checkpoint saved")
-            
-        print("Average duration was ", duration_sum/self.num_episodes)
+        
         print("Finished")  
             
     def reset(self):
@@ -294,12 +293,12 @@ class Agent:
 
 if __name__ == '__main__':
     num_cars =20
-    num_passengers = 25
+    num_passengers = 20
     
     grid_map = GridMap(1, (100,100), num_cars, num_passengers)
     cars = grid_map.cars
     passengers = grid_map.passengers
-    env = Environment(grid_map)
+    env = NewEnvironment(grid_map)
 
 
     input_size = 2*num_cars + 4*num_passengers # cars (px, py), passengers(pickup_x, pickup_y, dest_x, dest_y)
@@ -311,7 +310,7 @@ if __name__ == '__main__':
     # random 3386, 337.336, 17092
     load_file = None
     #greedy, random, dqn, qmix
-    agent = Agent(env, input_size, output_size, hidden_size, load_file = load_file, lr=0.001, mix_hidden = 64, batch_size=128, eps_decay = 20000, num_episodes=1000, mode = "dqn", training = False) # 50,000 episodes for full trains
+    agent = Agent(env, input_size, output_size, hidden_size, load_file = load_file, lr=0.001, mix_hidden = 64, batch_size=128, eps_decay = 20000, num_episodes=1000, mode = "greedy", training = True) # 50,000 episodes for full trains
     agent.train()
 
     

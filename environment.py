@@ -32,7 +32,6 @@ class Environment:
             # input("Press enter to step")
             # self.grid_map.visualize()
             
-        
             for i, act in enumerate(action[0]):
                 if cars[act].status == "idle" and passengers[i].status == "wait_pair":
                     car = cars[act]

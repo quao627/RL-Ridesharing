@@ -5,6 +5,7 @@ from passenger import Passenger
 from car import Car
 from util import Util
 from dqn import DQN
+from networkx.algorithms.shortest_paths import shortest_path_length
 
 class PairAlgorithm:
 
@@ -22,6 +23,31 @@ class PairAlgorithm:
                     min_dist = dist
                     assigned_car = j
             action[i] = assigned_car
+
+        return action
+    
+
+class NewPairAlgorithm:
+
+
+    def greedy_fcfs(self, grid_map):
+        selected_cars = set()
+        passengers = grid_map.passengers
+        cars = grid_map.cars
+        action = [-1]*len(passengers)
+        for i, p in enumerate(passengers):
+            min_dist = math.inf
+            assigned_car = None
+            for j, c in enumerate(cars):
+                if j in selected_cars:
+                    continue
+                dist = shortest_path_length(grid_map.network, source=p.pick_up_point, target=c.position, weight='weight')
+                if dist < min_dist:
+                    min_dist = dist
+                    assigned_car = j
+            if assigned_car != None:
+                selected_cars.add(assigned_car)
+                action[i] = assigned_car
 
         return action
                     

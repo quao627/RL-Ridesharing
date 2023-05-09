@@ -1,14 +1,12 @@
 
 import math
 import random
-import networkx as nx
-from networkx.algorithms.shortest_paths import floyd_warshall, shortest_path_length
 
 from util import Util
 from car import Car
 from passenger import Passenger
 
-class GridMap:
+class NewGridMap:
     def __init__(self, seed, size, num_cars, num_passengers):
         random.seed(seed)
         self.seed = seed
@@ -21,7 +19,6 @@ class GridMap:
         self.add_passenger(num_passengers)
         self.add_cars(num_cars)
         self.init_map_cost()
-        self.path_cost_dict = None
 
     def __repr__(self):
         message = 'cls:' + type(self).__name__ + \
@@ -46,32 +43,19 @@ class GridMap:
                   (abs(p1[0]-p2[0]) == 0 and abs(p1[1]-p2[1]) == 1):
           return True
 
-    def init_map_cost(self, seed = 0):
-        random.seed = seed
-        self.network = nx.Graph()
+    def init_map_cost(self):
         for row in range(self.size[0]):
             for col in range(self.size[1]):
                 p = (row, col)
                 # for up
                 p_up = (row-1, col)
-                if self.is_valid(p_up): 
-                    self.map_cost[(p, p_up)] = random.randint(1,9)
-                    self.network.add_edge(p, p_up, weight = self.map_cost[(p, p_up)])
+                if self.is_valid(p_up): self.map_cost[(p, p_up)] = random.randint(0,9)
                 p_right = (row, col+1)
-                if self.is_valid(p_right): 
-                    self.map_cost[(p, p_right)] = random.randint(1,9)
-                    self.network.add_edge(p, p_right, weight = self.map_cost[(p, p_right)])
+                if self.is_valid(p_right): self.map_cost[(p, p_right)] = random.randint(0,9)
                 p_down = (row+1, col)
-                if self.is_valid(p_down): 
-                    self.map_cost[(p, p_down)] = random.randint(1,9)
-                    self.network.add_edge(p, p_down, weight = self.map_cost[(p, p_down)])
+                if self.is_valid(p_down): self.map_cost[(p, p_down)] = random.randint(0,9)
                 p_left = (row, col-1)
-                if self.is_valid(p_left): 
-                    self.map_cost[(p, p_left)] = random.randint(1,9)
-                    self.network.add_edge(p, p_left, weight = self.map_cost[(p, p_left)])
-
-        # path_cost_dict = floyd_warshall(self.network, weight='weight')
-        # self.path_cost_dict = path_cost_dict
+                if self.is_valid(p_left): self.map_cost[(p, p_left)] = random.randint(0,9)
                 
     def init_zero_map_cost(self):
         for row in range(self.size[0]):
@@ -145,8 +129,6 @@ class GridMap:
             curr_pos = optim_next_pos
         return path
 
-
-
     def visualize(self):
         m = [["     " for i in range(self.size[1])] for j in range(self.size[0])]
         for p in self.passengers:
@@ -169,7 +151,7 @@ class GridMap:
 
 
 if __name__ == '__main__':
-    m = GridMap(0, (10,10), 3, 3)
+    m = NewGridMap(0, (10,10), 3, 3)
     print(m)
     print('path from (0,0) to (5,5):')
     path = m.plan_path((0,0),(5,5))
