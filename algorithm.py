@@ -27,8 +27,11 @@ class PairAlgorithm:
         return action
     
 
-class NewPairAlgorithm:
+def ManhattanDistance(p1, p2):
+    return abs(p1[0]-p2[0]) + abs(p1[1]-p2[1])
 
+
+class NewPairAlgorithm:
 
     def greedy_fcfs(self, grid_map):
         selected_cars = set()

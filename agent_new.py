@@ -50,7 +50,7 @@ class Agent:
         self.episode_durations = []
         self.loss_history = []
         
-        self.device = torch.device("cpu")#"cuda:0" if torch.cuda.is_available() else 
+        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         print("Device being used:", self.device)
         # self.policy_net = MatchingNetwork(vehicle_dim, passenger_dim, self.hidden_dim).to(self.device)
         self.policy_net = MatchingNetwork(2, 4, hidden_size).to(self.device)
@@ -200,7 +200,7 @@ class Agent:
         
     def optimize_model(self, actions, logprobs, rewards):
         loss = torch.zeros(len(actions))
-        for batch in range(len(actions)):
+        for batch in range(len(actions)):          
             loss[batch] = -(logprobs[batch] * torch.tensor(rewards[batch])).sum()
         loss = loss.mean()
         self.loss_history.append(loss.item())
@@ -286,7 +286,7 @@ if __name__ == '__main__':
     # random 3386, 337.336, 17092
     load_file = None
     #greedy, random, dqn, qmix
-    agent = Agent(env, input_size, output_size, hidden_size, load_file = load_file, lr=0.001, mix_hidden = 64, batch_size=128, eps_decay = 20000, num_episodes=1000, mode = "ours", training = True) # 50,000 episodes for full trains
+    agent = Agent(env, input_size, output_size, hidden_size, load_file = load_file, lr=0.05, mix_hidden = 64, batch_size=128, eps_decay = 20000, num_episodes=1000, mode = "ours", training = True) # 50,000 episodes for full trains
     agent.train()
 
     
