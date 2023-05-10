@@ -200,8 +200,15 @@ class Agent:
         
     def optimize_model(self, actions, logprobs, rewards):
         loss = torch.zeros(len(actions))
+        rewards = np.array(rewards)
+        rewards_sum = np.zeros(rewards.shape)
+        for step in range(rewards.shape[1]):
+            idx = rewards.shape[1] - step - 1
+            rewards_sum[:, idx] = rewards[:, idx]
+            if idx < rewards.shape[1] - 1:
+                rewards_sum[:, idx] += rewards_sum[:, idx+1]
         for batch in range(len(actions)):
-            loss[batch] = -(logprobs[batch] * torch.tensor(rewards[batch])).sum()
+            loss[batch] = -(logprobs[batch] * torch.tensor(rewards_sum[batch])).sum()
         loss = loss.mean()
         self.loss_history.append(loss.item())
 
